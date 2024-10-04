@@ -1,0 +1,20 @@
+<script>
+	window.onmessage = ({ data: { pluginMessage } }) => {
+		if (pluginMessage.type === "EXPORT_RESULT") {
+			console.log(pluginMessage);
+			const tokens_str = pluginMessage.tokens.join("\n")
+			dl_as_file_Blob("atom-figma-tokens.css", tokens_str);
+		}
+	};
+
+	function dl_as_file_Blob(filename_to_dl, data_to_dl) {
+		let blobx = new Blob([data_to_dl], { type: 'text/plain' }); // ! Blob
+		let elemx = window.document.createElement('a');
+		elemx.href = window.URL.createObjectURL(blobx); // ! createObjectURL
+		elemx.download = filename_to_dl;
+		elemx.style.display = 'none';
+		document.body.appendChild(elemx);
+		elemx.click();
+		document.body.removeChild(elemx);
+	}
+</script>
