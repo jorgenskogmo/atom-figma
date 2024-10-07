@@ -1,8 +1,10 @@
 <script>
 	window.onmessage = ({ data: { pluginMessage } }) => {
 		if (pluginMessage.type === "EXPORT_RESULT") {
-			console.log(pluginMessage);
-			const tokens_str = pluginMessage.tokens.join("\n")
+			console.log("pluginMessage:", pluginMessage);
+			let tokens_str = `/* Exported at ${(new Date()).toUTCString()} */`;
+			tokens_str += `\n:root {\n    ${pluginMessage.tokens.join("\n    ")}\n}`;
+			console.log("tokens, exported:", tokens_str);
 			dl_as_file_Blob("atom-figma-tokens.css", tokens_str);
 		}
 	};

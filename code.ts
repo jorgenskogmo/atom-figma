@@ -1,3 +1,17 @@
+// Example Figma file: https://www.figma.com/design/NHnYZa0JTp72aLD2qB82zC/atom-ds?node-id=0-1&t=yshzvQuDk1ZkMXxK-1
+
+const TOKEN_PREFIX: string = "atomlib";
+const NUMBER_UNIT: string = ""; //"px";
+
+type LimitedVariableValue = boolean | string | number | RGB | RGBA;
+
+interface TokenType {
+	name: string; // the name of the variable
+	mode: string; // the "column" of the variable
+	type: VariableResolvedDataType;
+	value: LimitedVariableValue;
+}
+
 function rgbToHex({ r, g, b, a }: RGBA) {
 	if (a !== 1) {
 		return `rgba(${[r, g, b]
@@ -13,11 +27,46 @@ function rgbToHex({ r, g, b, a }: RGBA) {
 	return `#${hex}`;
 }
 
-async function test() {
+const isAlias = (v: VariableValue): boolean => {
+	return JSON.stringify(v).includes("VARIABLE_ALIAS");
+};
+
+const buildToken = ({ name, type, mode, value }: TokenType): string => {
+	// console.log("buildToken:", name, type, mode, value);
+	const _mode = `${mode.replace(/ /g, "-").toLowerCase()}`;
+	const _type = `${type.toLowerCase()}`;
+	const _name = name.replace(/ /g, "_").toLowerCase();
+	let _value = value;
+
+	let comment = "";
+	// print Booleans as 1|0
+	if (type === "BOOLEAN") {
+		comment = type ? "bool:true" : "bool:false";
+		_value = type ? 1 : 0;
+	}
+
+	// print Strings as comments
+	if (type === "STRING") {
+		return `/* ${_value} (${_name} @ ${_mode}) */`;
+	}
+
+	// append unit to numbers
+	if (type === "FLOAT") {
+		_value = `${_value}${NUMBER_UNIT}`;
+	}
+
+	const prefix = TOKEN_PREFIX !== "" ? `${TOKEN_PREFIX}-` : "";
+
+	//--dark-color-fg: #f00
+	return `--${prefix}${_mode}-${_type}-${_name}: ${_value}; ${comment !== "" ? `/* ${comment} */` : ""}`;
+};
+
+async function export_tokens() {
 	const localVariables = await figma.variables.getLocalVariablesAsync();
 	// console.log("localVariables:", localVariables);
 
 	const collections = await figma.variables.getLocalVariableCollectionsAsync();
+	// console.log("collections:", collections);
 
 	// Find the "theme" collection
 	const themeCollection = collections.find(
@@ -25,6 +74,7 @@ async function test() {
 	);
 
 	if (!themeCollection) {
+		// todo: show ui message
 		console.error("Theme collection not found");
 		return;
 	}
@@ -33,137 +83,92 @@ async function test() {
 	const themeVariables = localVariables.filter(
 		(v) => v.variableCollectionId === themeCollection.id,
 	);
+	// console.log("themeVariables:", themeVariables);
 
-	// console.log(
-	// 	"themeVariables:",
-	// 	themeVariables,
-	// 	"themeCollection:",
-	// 	themeCollection,
-	// );
-
-	const resolveMode = (mid: string): string => {
-		const modeId = themeCollection.modes.find((mode) => mode.modeId === mid);
-		if (modeId) {
-			return modeId.name;
+	const resolveVariable = (variableId: string, depth = 0): VariableValue => {
+		// console.log("~ resolveVariable", variableId, depth);
+		const variable = localVariables.find((v) => v.id === variableId);
+		if (depth > 100) {
+			console.error("Too many recursions");
+			return -100;
 		}
-		return "default";
+		if (!variable) {
+			console.error("Variable not found");
+			return -10;
+		}
+
+		// Determine if this is an alias
+		const value = Object.values(variable.valuesByMode)[0]; // only the "theme" collection should have columns
+
+		// console.log("~~ isAlias:", isAlias(value));
+
+		if (isAlias(value)) {
+			const alias = value as { type: "VARIABLE_ALIAS"; id: string };
+			return resolveVariable(alias.id, depth + 1);
+		}
+
+		return value;
 	};
 
-	const out: OutType[] = [];
 	const tokens: string[] = [];
 
+	// loop through all themeVariables
 	for (const variable of themeVariables) {
 		// console.log("theme variable:", variable.name, variable);
-		const values = [];
-		const keys = Object.keys(variable.valuesByMode);
-		for (const key of keys) {
-			const variant = variable.valuesByMode[key];
-			if (typeof variant.valueOf() === "object") {
-				if (Object.keys(variant).includes("id")) {
-					const { id } = variant as { id: string };
-					const resolved = await figma.variables.getVariableByIdAsync(id);
-					if (resolved) {
-						let value = Object.values(resolved.valuesByMode)[0];
-						if (variable.resolvedType === "COLOR") {
-							value = rgbToHex(value as RGBA);
-						}
-						// console.log(
-						// 	"- variant",
-						// 	variable.name,
-						// 	"resolved to",
-						// 	resolved.name,
-						// 	resolved.resolvedType,
-						// 	value,
-						// 	"----",
-						// 	key,
-						// 	resolveMode(key),
-						// );
-						values.push(value);
-						tokens.push(
-							buildToken({
-								name: variable.name,
-								type: resolved.resolvedType,
-								mode: resolveMode(key),
-								value,
-							}),
-						);
-					} else {
-						console.log("- variant not resolved", id);
-					}
-				}
-			} else {
-				let value = Object.values(variable.valuesByMode)[0];
-				if (variable.resolvedType === "COLOR") {
-					value = rgbToHex(value as RGBA);
-				}
-				// console.log(
-				// 	"- variable",
-				// 	variable.name,
-				// 	"is not aliased. Raw value:",
-				// 	value,
-				// 	"--HERE--",
-				// 	key,
-				// 	resolveMode(key),
-				// );
-				values.push(value);
-				tokens.push(
-					buildToken({
-						name: variable.name,
-						type: variable.resolvedType,
-						mode: resolveMode(key),
-						value,
-					}),
-				);
+
+		const name = variable.name;
+		const type = variable.resolvedType;
+
+		/// ...and their valuesByModes (Figma: "variable mode" (e.g. columns in the variable editor)
+		const valuesByModeKeys = Object.keys(variable.valuesByMode);
+		for (const vmk of valuesByModeKeys) {
+			const variant = variable.valuesByMode[vmk];
+
+			/// find their raw value (recursively traverse the alias-chain)
+			let rawValue = variant;
+			if (isAlias(variant)) {
+				const alias = variant as { type: "VARIABLE_ALIAS"; id: string };
+				rawValue = resolveVariable(alias.id);
 			}
+
+			/// no aliases from here on
+			let value = <LimitedVariableValue>rawValue;
+
+			if (variable.resolvedType === "COLOR") {
+				value = rgbToHex(value as RGBA);
+			}
+
+			const _modeName = themeCollection.modes.find(
+				(mode) => mode.modeId === vmk,
+			);
+			const mode = _modeName ? _modeName.name : "default";
+
+			// console.log(
+			// 	"T",
+			// 	name,
+			// 	mode,
+			// 	type,
+			// 	value,
+			// );
+
+			tokens.push(
+				buildToken({
+					name,
+					type,
+					mode,
+					value,
+				}),
+			);
 		}
-
-		// const obj: OutType = {
-		// 	name: variable.name,
-		// 	type: variable.resolvedType.toLowerCase(),
-		// 	mode: "--",
-		// 	values,
-		// };
-
-		// console.log("token:", variable.name, variable.resolvedType, values);
-
-		// out.push(obj);
 	}
 
-	console.log("tokens:", tokens.sort());
+	const sorted_tokens = tokens.sort();
+	// console.log("tokens:", sorted_tokens);
 
 	figma.showUI(__html__, { visible: false });
-	figma.ui.postMessage({ type: "EXPORT_RESULT", tokens: tokens.sort() });
+	figma.ui.postMessage({ type: "EXPORT_RESULT", tokens: sorted_tokens });
 
 	setTimeout(() => figma.closePlugin(), 1000);
 }
 
-test();
-
-type OutType = {
-	name: string;
-	type: string;
-	mode: string;
-	values: unknown;
-};
-
-type TokenType = {
-	name: string;
-	type: string;
-	mode: string;
-	value: unknown;
-};
-
-const buildToken = ({ name, type, mode, value }: TokenType): string => {
-	const _mode = `${mode.replace(/ /g, "-").toLowerCase()}-`;
-	let _type = `${type.toLowerCase()}-`;
-	const _name = name.replace(/ /g, "-").toLowerCase();
-
-	let unit = "";
-	if (_type === "float-") {
-		unit = "px";
-		_type = "";
-	}
-
-	//--dark-color-fg: #f00
-	return `--${_mode}${_type}${_name}: ${value}${unit};`;
-};
+export_tokens();
