@@ -1,13 +1,64 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>atom-figma</title>
+	<style>
+		:root {
+			--atom-font-family-default: system-ui, -apple-system, "Open Sans", "Helvetica Neue", sans-serif;
+			--atom-font-h3: 500 24px/32px var(--atom-font-family-default);
+			--atom-font-p: 400 13px/18px var(--atom-font-family-default);
+		}
+
+		body {
+			margin: 0;
+			padding: 1rem;
+			font: var(--atom-font-p);
+			background-color: var(--figma-color-bg);
+			color: var(--figma-color-text);
+		}
+
+		h1 {
+			font: var(--atom-font-h3);
+		}
+
+		.btns {
+			padding-top: 1rem;
+		}
+	</style>
+</head>
+
+<body>
+	<div id="message">msg</div>
+	<div class="btns">
+		<button id="btn_dismiss" onclick="dismiss()">Dismiss</button>
+	</div>
+</body>
 <script>
+
+	window.addEventListener("keydown", (ev) => {
+		if (ev.keyCode === 27) dismiss() // escape
+	})
+	window.focus();
+
 	window.onmessage = ({ data: { pluginMessage } }) => {
+
+		if (pluginMessage.type === "MESSAGE") {
+			document.querySelector("#message").innerHTML = pluginMessage.payload;
+		}
+
 		if (pluginMessage.type === "EXPORT_RESULT") {
 			console.log("pluginMessage:", pluginMessage);
 			let tokens_str = `/* Exported at ${(new Date()).toUTCString()} */`;
-			tokens_str += `\n:root {\n    ${pluginMessage.tokens.join("\n    ")}\n}`;
+			tokens_str += `\n:root {\n    ${pluginMessage.payload.join("\n    ")}\n}`;
 			console.log("tokens, exported:", tokens_str);
 			dl_as_file_Blob("atom-figma-tokens.css", tokens_str);
 		}
 	};
+
+	function dismiss() {
+		parent.postMessage({ pluginMessage: { type: 'dismiss' } }, '*')
+	}
 
 	function dl_as_file_Blob(filename_to_dl, data_to_dl) {
 		let blobx = new Blob([data_to_dl], { type: 'text/plain' }); // ! Blob
@@ -20,3 +71,5 @@
 		document.body.removeChild(elemx);
 	}
 </script>
+
+</html>
