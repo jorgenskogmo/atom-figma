@@ -53,8 +53,8 @@ const buildToken = ({ name, type, mode, value }: TokenType): string => {
 	let comment = "";
 	// print Booleans as 1|0
 	if (type === "BOOLEAN") {
-		comment = type ? "bool:true" : "bool:false";
-		_value = type ? 1 : 0;
+		comment = value ? "bool:true" : "bool:false";
+		_value = value ? 1 : 0;
 	}
 
 	// print Strings as comments
@@ -171,13 +171,7 @@ async function main() {
 				);
 				const mode = _modeName ? _modeName.name : "default";
 
-				// console.log(
-				// 	"T",
-				// 	name,
-				// 	mode,
-				// 	type,
-				// 	value,
-				// );
+				console.log("T", name, mode, type, value);
 
 				tokens.push(
 					buildToken({
